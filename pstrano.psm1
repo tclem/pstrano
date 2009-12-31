@@ -929,16 +929,17 @@ Assert
 			$script:pstrano.deploy_script_file = dir $scriptFile
 			set-location $script:pstrano.deploy_script_file.Directory
 			. $script:pstrano.deploy_script_file.FullName
-						
+
 			if ($explain) 
 			{
 				Write-Documentation
 				Cleanup-Environment				
 				return								
 			}
-
+			
 			Configure_Environment
 
+			
 			# N.B. The initial dot (.) indicates that variables initialized/modified
 			#      in the propertyBlock are available in the parent scope.
 			while ($script:includes.Count -gt 0) 
@@ -962,7 +963,7 @@ Assert
 				}
 				finally{
 					if ($script:tearDownScriptBlock -ne $null) {
-						& $script:tearDownScriptBlock
+						. $script:tearDownScriptBlock
 					}
 				}
 			}  

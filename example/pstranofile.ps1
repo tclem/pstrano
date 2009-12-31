@@ -17,9 +17,7 @@ teardown {
 	$sessions | Remove-PSSession
 }
 
-task Setup `
-	-description "Sets up each of the web server roles" 
-{
+task Setup {
 	Invoke-Command $sessions {
 		param($deploy_dir)
 		
@@ -27,17 +25,13 @@ task Setup `
 		CheckCreatePath ( Join-Path $deploy_dir '\releases')
 		CheckCreatePath ( Join-Path $deploy_dir '\shared')
 	} -ArgumentList $deploy_to
-} 
+} -description "Sets up each of the web server roles" 
 
-task Check `
-	-description "Checks server dependencies and such"
-{
+task Check {
 	# todo
-} 
+} -description "Checks server dependencies and such"
 
-task Deploy `
-	 -description "Deploys your project"
-{
+task Deploy {
 	Invoke-Command $sessions {
 		param($deploy_dir, $scm_cmd, $repo)
 	
@@ -61,7 +55,7 @@ task Deploy `
 		Write-Host ("Copied the latest cached version to {0}" -f $release_dir) -ForegroundColor Magenta
 		
 	} -ArgumentList $deploy_to, $scm_command, $repository
-}
+} -description "Deploys your project"
 
 task Update `
 	-description "Copies the latest code and updates the symlink" `
@@ -76,9 +70,7 @@ task Update `
 #}
 #
 
-task SymLink `
-	-description "Creates the final symlink to the just released version"
-{
+task SymLink {
 	Invoke-Command $sessions {
 		param($deploy_dir)
 		
@@ -90,31 +82,35 @@ task SymLink `
 		Write-Host ("Created Symlink {0}" -f $current_symlnk) -ForegroundColor Magenta
 		
 	} -ArgumentList $deploy_to
-}
+} -description "Creates the final symlink to the just released version"
 
 #
 #task Restart{
 #}
 #
-task Rollback{
-#	Invoke-Command $sessions {
-#		param($deploy_dir)
-#		
-#		$current = Get-ChildItem $deploy_dir current.lnk
-#		$shell = New-Object -COM WScript.Shell
-#		$shortcut = $shell.CreateShortcut($current.fullname)
-#		$current_release = Split-Path $shortcut.TargetPath -Leaf
-#		"Current release is {0}" -f $current_release
-#		
-#		$releases_dir = Join-Path $deploy_dir 'releases'
-#		$prev_release = Get-ChildItem $releases_dir | where {$_.Name -lt $current_release} | sort Name | select -First 1
-#		if ($prev_release -eq $null) { throw "Failed: Nothing to rollback to" }
-#		"Previous release is {0}" -f $prev_release
-#		
-#		# todo: actually rollback
-#		
-#	} -ArgumentList $deploy_to
-}
+task Rollback {
+	Invoke-Command $sessions {
+		param($deploy_dir)
+		
+		# find the current version
+		$current = Get-ChildItem $deploy_dir current.lnk
+		$shell = New-Object -COM WScript.Shell
+		$shortcut = $shell.CreateShortcut($current.fullname)
+		$current_release = Split-Path $shortcut.TargetPath -Leaf
+		"Current release is {0}" -f $current_release
+		
+		# find the previous version
+		$releases_dir = Join-Path $deploy_dir 'releases'
+		$prev_release = Get-ChildItem $releases_dir | where {$_.Name -lt $current_release} | sort Name -Descending | select -First 1
+		if ($prev_release -eq $null) { throw "Failed: Nothing to rollback to" }
+		"Previous release is {0}" -f $prev_release
+		
+		# do the rollback
+		$shortcut.TargetPath = Resolve-Path (Join-Path $deploy_dir "releases\$prev_release")
+		$shortcut.Save()
+		
+	} -ArgumentList $deploy_to
+} -description "Rollsback to the previous deployment"
 
 after Deploy -do SymLink
 
