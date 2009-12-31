@@ -9,6 +9,8 @@
 [hashtable]$script:tasks
 [scriptblock]$script:taskSetupScriptBlock
 [scriptblock]$script:taskTearDownScriptBlock
+[scriptblock]$script:setupScriptBlock
+[scriptblock]$script:tearDownScriptBlock
 [system.collections.queue]$script:includes 
 [system.collections.stack]$script:executedTasks
 [system.collections.stack]$script:callStack
@@ -792,6 +794,33 @@ Assert
 	$script:taskTearDownScriptBlock = $teardown
 }
 
+function Setup
+{
+[CmdletBinding(
+    SupportsShouldProcess=$False,
+    SupportsTransactions=$False, 
+    ConfirmImpact="None",
+    DefaultParameterSetName="")]
+	param(
+	[Parameter(Position=0,Mandatory=1)]
+	[scriptblock]$setup
+	)
+	$script:setupScriptBlock = $setup
+}
+
+function TearDown
+{
+[CmdletBinding(
+    SupportsShouldProcess=$False,
+    SupportsTransactions=$False, 
+    ConfirmImpact="None",
+    DefaultParameterSetName="")]
+	param(
+	[Parameter(Position=0,Mandatory=1)]
+	[scriptblock]$teardown)
+	$script:tearDownScriptBlock = $teardown
+}
+
 function Invoke-pstrano 
 {
 <#
@@ -921,21 +950,29 @@ Assert
 			Load_DefaultEnvironment $environment
 
 			# Execute the list of tasks
-			if($taskList.Length -ne 0) 
-			{
-				foreach($task in $taskList) 
-				{
-					ExecuteTask $task
+			if($taskList.Length -ne 0) {
+				try{
+					if ($script:setupScriptBlock -ne $null) {
+						. $script:setupScriptBlock
+					}
+					foreach($task in $taskList) 
+					{
+						ExecuteTask $task
+					}
+				}
+				finally{
+					if ($script:tearDownScriptBlock -ne $null) {
+						& $script:tearDownScriptBlock
+					}
 				}
 			}  
-			else 
-			{
+			else {
 				throw 'Error: You must specify a task to run. Run Invoke-pstrano -docs to see a list of available tasks'
 			}
 
 			$stopwatch.Stop()
 			
-			"`nDeploy Succeeded!`n" 
+			#"`nDeploy Succeeded!`n" 
 			"-"*70
 			
 			Write-TaskTimeSummary		
@@ -976,4 +1013,4 @@ Assert
 	}
 }
 
-Export-ModuleMember -Function "Invoke-pstrano","Task","Include","FormatTaskName","TaskSetup","TaskTearDown","Assert","Role","After","Before"
+Export-ModuleMember -Function "Invoke-pstrano","Task","Include","FormatTaskName","TaskSetup","TaskTearDown","Assert","Role","After","Before","Setup","TearDown"
