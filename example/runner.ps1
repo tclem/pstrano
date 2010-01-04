@@ -3,4 +3,4 @@ Import-Module pstrano -Force
 Set-Alias pstrano Invoke-pstrano
 
 # Here is how to run pstrano
-pstrano rollback test -v
+pstrano deploy test

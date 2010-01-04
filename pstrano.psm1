@@ -983,14 +983,14 @@ Assert
 		catch 
 		{	
 			#Append detailed exception to log file
-			if ($script:pstrano.log_error)
-			{
+#			if ($script:pstrano.log_error)
+#			{
 				$errorLogFile = "pstrano-error-log-{0}.log" -f ([DateTime]::Now.ToString("yyyyMMdd"))
 				"-" * 70 >> $errorLogFile
 				"{0}: An Error Occurred. See Error Details Below: " -f [DateTime]::Now >>$errorLogFile
 				"-" * 70 >> $errorLogFile
 				Resolve-Error $_ >> $errorLogFile
-			}
+#			}
 			
             $scriptFileName = Split-Path $scriptFile -leaf
             if (test-path $scriptFile) { $scriptFileName = $script:pstrano.deploy_script_file.Name }		

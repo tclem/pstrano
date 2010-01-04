@@ -6,8 +6,22 @@ environment 'test'
 set application 'sample_application'
 set deploy_to "\Inetpub\wwwroot\$application"
 
+# First deployment strategy is using git and a remote_cache of the repository -> this is the fastest
+#set deploy_via 'remote_cache'
 set repository 'git://github.com/tclem/pstrano.git'
 
+# Second deployment strategy is using http file download (expects a zip file) -> slower, but no dependencies
+set deploy_via 'http'
+set http_source 'http://github.com/tclem/pstrano/zipball/master'
+
+#task SomethingCool{
+#
+#	"This is my task running"
+#
+#} -description "Nice task"
+#
+#before Deploy -do SomethingCool
+#after Deploy -do SomethingCool
 
 # Just examples of how to use before/after
 #task ExtraWork {
