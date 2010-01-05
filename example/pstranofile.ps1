@@ -22,7 +22,7 @@ teardown {
 }
 
 task Setup {
-	Invoke-Command $sessions {
+	Run {
 		CheckCreatePath $deploy_dir
 		CheckCreatePath ( Join-Path $deploy_dir '\releases')
 		CheckCreatePath ( Join-Path $deploy_dir '\shared')
@@ -132,6 +132,12 @@ task Rollback {
 	}
 } -description "Rollsback to the previous deployment"
 
+function Run
+{
+	param([scriptblock]$script)
+	Invoke-Command $sessions $script
+}
+
 # Private Functions
 function CheckVars
 {
@@ -143,7 +149,6 @@ function CheckVars
 	Assert ($deploy_via -ne $null) "Failed: You must specify a value for deploy_via"
 	Assert (($deploy_via -eq 'remote_cache'), ($deploy_via -eq 'abcd')) "Failed: deploy_via is not set to one of the valid values"
 }
-
 function SetupRemoteFunctions
 {
 	Invoke-Command $sessions {

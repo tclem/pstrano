@@ -14,14 +14,15 @@ set repository 'git://github.com/tclem/pstrano.git'
 set deploy_via 'http'
 set http_source 'http://github.com/tclem/pstrano/zipball/master'
 
-#task SomethingCool{
-#
-#	"This is my task running"
-#
-#} -description "Nice task"
-#
-#before Deploy -do SomethingCool
-#after Deploy -do SomethingCool
+task SomethingCool{
+
+	Run {
+	WriteHost
+	"This is my task running"}
+
+} -description "Nice task"
+
+after Setup -do SomethingCool
 
 # Just examples of how to use before/after
 #task ExtraWork {
