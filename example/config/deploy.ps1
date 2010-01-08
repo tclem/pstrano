@@ -17,7 +17,7 @@ set http_source 'http://github.com/tclem/pstrano/zipball/master'
 task SomethingCool{
 
 	Run {
-	WriteHost
+	WriteHostName
 	"This is my task running"}
 
 } -description "Nice task"
