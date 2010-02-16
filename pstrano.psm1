@@ -952,7 +952,7 @@ Assert
 
 			# Execute the list of tasks
 			if($taskList.Length -ne 0) {
-				try{
+#				try{
 					if ($script:setupScriptBlock -ne $null) {
 						. $script:setupScriptBlock
 					}
@@ -960,12 +960,12 @@ Assert
 					{
 						ExecuteTask $task
 					}
-				}
-				finally{
-					if ($script:tearDownScriptBlock -ne $null) {
-						. $script:tearDownScriptBlock
-					}
-				}
+#				}
+#				finally{
+#					if ($script:tearDownScriptBlock -ne $null) {
+#						. $script:tearDownScriptBlock
+#					}
+#				}
 			}  
 			else {
 				throw 'Error: You must specify a task to run. Run Invoke-pstrano -docs to see a list of available tasks'
@@ -1003,6 +1003,11 @@ Assert
 			else 
 			{
 				$script:pstrano.build_success = $false
+			}
+		}
+		finally{
+			if ($script:tearDownScriptBlock -ne $null) {
+				. $script:tearDownScriptBlock
 			}
 		}
 	} #Process
