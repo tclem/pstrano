@@ -1,19 +1,29 @@
+# Generally you don't need to edit this file
+# Use deploy.ps1 for your custom project settings instead
 include 'config\deploy.ps1'
 
-set application $null 			-Option AllScope
-set deploy_to 	$null 			-Option AllScope
-set deploy_via  remote_cache 	-Option AllScope	
-set scm 		'git' 			-Option AllScope
-set repository 	$null 			-Option AllScope
-set scm_command '\Program Files\Git\bin\git' -Option AllScope
-set http_source $null 			-Option AllScope
+[string]$script:user = $null
+[hashtable]$script:vars = @{}
+
+# Default Settings
+$vars["install_util"] = '\Windows\Microsoft.NET\Framework\v2.0.50727\InstallUtil.exe'
+$vars["scm"] = 'git'
+$vars["scm_command"] = '\Program Files\Git\bin\git'
+$user = $null
 
 setup {
+
+	$vars["environment"] = $script:defaultEnvironment
 	CheckVars
 	Write-Host ("Connecting to {0} host(s): " -f $roles.web.count) -NoNewline
 	$roles.web | %{ "$_, " | Write-Host -NoNewline  }
 	Write-Host
-	$sessions = New-PSSession $roles.web
+	if($user -eq $null){
+		$sessions = New-PSSession $roles.web
+	}
+	else{
+		$sessions = New-PSSession $roles.web -Credential $user
+	}
 	SetupRemoteFunctions
 }
 
@@ -24,21 +34,28 @@ teardown {
 task Setup {
 	Run {
 		CheckCreatePath $deploy_dir
-		CheckCreatePath ( Join-Path $deploy_dir '\releases')
-		CheckCreatePath ( Join-Path $deploy_dir '\shared')
+		CheckCreatePath ( $deploy_dir_releases )
+		CheckCreatePath ( $deploy_dir_shared )
+		CheckCreatePath ( $deploy_dir_current )
+		
+		cd $deploy_dir_shared
+		if(!(Test-Path 'tools.zip')){
+			WriteHostName "Downloading tools to "
+			(Get-WebFile "http://file.bluedotsolutions.com/public/Deployment_tools (1).zip" 'tools.zip') | Write-Host -ForegroundColor DarkGray
+			
+			WriteHostName 'Extracted package to '
+			(Unzip 'tools.zip' 'tools') | Write-Host -ForegroundColor DarkGray
+		}
+		CheckFile ( Join-Path $deploy_dir_shared '\tools\junction.exe' )
 	}
 } -description "Sets up each of the web server roles" 
 
 task Check {
 	Invoke-Command $sessions {
-		param($d_via)
-		
-		if($d_via -eq 'remote_cache'){
+		if($vars["deploy_via"] -eq 'remote_cache'){
 			Assert(Test-Path $scm_cmd) "Failed: Cannot find scm exe (scm_command) here: $scm_cmd"
 		}
-		
-		
-	} -ArgumentList $deploy_via
+	}
 } -description "Checks server dependencies and such"
 
 task Deploy {
@@ -48,7 +65,7 @@ task DeployViaRemoteCache {
 	Invoke-Command $sessions {
 		# get the latest code from the scm
 		WriteHostName
-		$cached_copy = Join-Path $deploy_dir '\shared\cached-copy'
+		$cached_copy = Join-Path $deploy_dir_shared '\cached-copy'
 		if(!(Test-Path $cached_copy)){
 			# clone the repo
 			(& $scm_cmd clone $repo "$cached_copy") | Write-Host -ForegroundColor DarkGreen
@@ -59,29 +76,31 @@ task DeployViaRemoteCache {
 			(& $scm_cmd pull) | Write-Host -ForegroundColor DarkGreen
 		}
 	}
-} -description "Deploys your project via remote cache" -precondition { return ($deploy_via -eq 'remote_cache')}
+} -description "Deploys your project via remote cache" -precondition { return ($vars["deploy_via"] -eq 'remote_cache')}
 
 task DeployViaHttp {
 	Invoke-Command $sessions {
-		$shared_dir = Join-Path $deploy_dir '\shared'
-		cd $shared_dir
+		cd $deploy_dir_shared
 		
-		WriteHostName 'Downloading '
+		WriteHostName "Downloading from $http_download_url to "
 		(Get-WebFile $http_download_url 'package.zip') | Write-Host -ForegroundColor DarkGray
+#		$f = (Get-WebFile $http_download_url)
+#		Write-Host "$filename" -ForegroundColor DarkGray
 		
 		WriteHostName 'Extracted package to '
 		($cached_copy = UnZip 'package.zip') | Write-Host -ForegroundColor DarkGray
+#		($cached_copy = UnZip $f) | Write-Host -ForegroundColor DarkGray
 		
 		# bits doesn't work over pssession :(
 #		Import-Module BitsTransfer
 #		Start-BitsTransfer $bits_package (Join-Path $deploy_dir 'package.zip')
 	}
-} -description "Deploys your project via BITS" -precondition { return ($deploy_via -eq 'http')}
+} -description "Deploys your project via Http" -precondition { return ($vars["deploy_via"] -eq 'http')}
 
 task UpdateRelease {
 	Invoke-Command $sessions {
 		# the release directory
-		$release_dir = Join-Path $deploy_dir "\releases\$release_time_stamp"
+		$release_dir = Join-Path $deploy_dir_releases "\$release_time_stamp"
 		
 		# copy over the latest-greatest
 		Copy-Item $cached_copy $release_dir -Recurse
@@ -92,11 +111,21 @@ task UpdateRelease {
 
 task SymLink {
 	Invoke-Command $sessions {
-		$current_symlnk = (Join-Path $deploy_dir '\current.lnk')
-		$shell = New-Object -COM WScript.Shell
-		$shortcut = $shell.CreateShortcut($current_symlnk)
-		$shortcut.TargetPath = Resolve-Path $release_dir
-		$shortcut.Save()
+	
+		# this should work in iis
+		$juncExe = (Join-Path $deploy_dir_shared '\tools\junction.exe')
+		if(Test-Path $deploy_dir_current){
+			& $juncExe -d "$deploy_dir_current"
+		}
+		& $juncExe "$deploy_dir_current" "$release_dir"
+		
+		# this doesn't actually work for iis
+#		$current_symlnk = (Join-Path $deploy_dir '\current.lnk')
+#		$shell = New-Object -COM WScript.Shell
+#		$shortcut = $shell.CreateShortcut($current_symlnk)
+#		$shortcut.TargetPath = Resolve-Path $release_dir
+#		$shortcut.Save()
+
 		WriteHostName
 		Write-Host ("Created Symlink {0}" -f $current_symlnk) -ForegroundColor Magenta
 	}
@@ -141,36 +170,90 @@ function Run
 # Private Functions
 function CheckVars
 {
-	Assert $roles.ContainsKey('web') "Failed: No servers defined for the web role"
+	$roles.web | %{ "$_ " } | Write-Verbose
+	$deploy_to = $vars['deploy_to']
+	$deploy_via = $vars['deploy_via']
+	$repository = $vars["repository"]
+	$scm = $vars["scm"]
+	$scm_command = $vars["scm_command"]
+	
+	Write-Verbose "deploy_to = $deploy_to"
+	Write-Verbose "scm = $scm"
+	Write-Verbose "scm_command = $scm_command"
+	Write-Verbose "repository = $repository"
+	Write-Verbose "deploy_via = $deploy_via"
+	
+	Assert $roles.ContainsKey('web') "Failed: No servers defined for the web role, You must define at least 1 web server"
 	Assert ($deploy_to -ne $null) "Failed: deploy_to has not been set"
-	Assert ($scm -eq 'git') "Failed: The only support scm is git right now"
-	Assert ($scm_command -ne $null) "Failed: You must specify the scm_command"
-	Assert ($repository -ne $null) "Failed: You must specify the repository"
 	Assert ($deploy_via -ne $null) "Failed: You must specify a value for deploy_via"
-	Assert (($deploy_via -eq 'remote_cache'), ($deploy_via -eq 'abcd')) "Failed: deploy_via is not set to one of the valid values"
+	if($deploy_via -eq 'remote_cache'){
+		Assert ($scm -eq 'git') "Failed: The only support scm is git right now"
+		Assert ($scm_command -ne $null) "Failed: You must specify the scm_command"
+		Assert (($repository -ne $null)) "Failed: You must specify the repository"
+	}
+	elseif($deploy_via -eq 'http'){
+		Assert (($vars["http_source"] -ne $null)) "Failed: You must specify the http_source"
+	}
+	else{
+		throw "Failed. You must specify either 'remote_cache' or 'http' as your deploy_via strategy"
+	}
 }
 function SetupRemoteFunctions
 {
 	Invoke-Command $sessions {
-		param($d, $s, $r, $v, $source)
+		param($vars_p, $roles_p)
 		
-		$deploy_dir = $d
-		$scm_cmd = $s
-		$repo = $r
-		$deploy_strategy = $v
-		$http_download_url = $source
+		$vars = $vars_p
+		$roles = $roles_p
+		
+		$repo = $vars["repository"]
+		$scm = $vars["scm"]
+		$scm_cmd = $vars["scm_command"]
+		$http_download_url = $vars["http_source"]
+		$deploy_strategy = $vars["deploy_via"]
+		$deploy_dir = $vars["deploy_to"]
+
+		$deploy_dir_current = (Join-Path $deploy_dir '\current')
+		$deploy_dir_shared = (Join-Path $deploy_dir '\shared')
+		$deploy_dir_releases = (Join-Path $deploy_dir '\releases')
 		$release_time_stamp = [DateTime]::Now.ToString("yyyyMMddhhmmss")
+		$host_name = hostname
+		
+		$vars.Keys | %{ "$_ : " + $vars["$_"]  } | Write-Host -ForegroundColor DarkGray
 	
 		function CheckCreatePath {
 			param($path)
 			
-			WriteHostName
 			if(!(Test-Path $path)){
-				Write-Host ("Creating {0}" -f $path) -ForegroundColor Magenta
+				Print ("Creating {0}" -f $path) Magenta
 				[void](md $path)
 			}
 			else{
-				Write-Host ("{0} exists" -f $path) -ForegroundColor Green
+				Print ("{0} exists" -f $path) -ForegroundColor Green
+			}
+		}
+		
+		function CheckFile{
+			param($path)
+			if(!(Test-Path $path)){
+				Print ("$path does not exist! You must manually put this file on the remote filesystem for pstrano to work.") -ForegroundColor Red
+			}
+			else{
+				Print ("{0} exists" -f $path) Green
+			}
+		}
+		
+		function Print{
+			param(
+				[string]$text, 
+				[System.ConsoleColor]$ForegroundColor
+			)
+			Write-Host "[$host_name]# " -ForegroundColor DarkGray -NoNewline
+			if($ForegroundColor -eq $null){
+				Write-Host $text -ForegroundColor DarkGray 
+			}
+			else{
+				Write-Host $text -ForegroundColor $ForegroundColor 
 			}
 		}
 		
@@ -180,21 +263,114 @@ function SetupRemoteFunctions
 		}
 		
 		function UnZip{
-			param([string]$file)
+			param([string]$file, [string]$name = 'UnPack')
 			
 			$shell=new-object -com shell.application
-			$CurrentLocation=get-location
-			$CurrentPath=$CurrentLocation.path
-			$Location=$shell.namespace($CurrentPath)
+			$CurrentLocation= get-location 
+			$CurrentLocation = Join-Path $CurrentLocation $name
+			if(Test-Path $CurrentLocation){ rm $CurrentLocation -Force -Recurse }
+			mkdir $CurrentLocation -Force
+			$Location=$shell.namespace($CurrentLocation)
 			$ZipFiles = get-childitem $file
 			foreach ($ZipFile in $ZipFiles){
 				$ZipFolder = $shell.namespace($ZipFile.fullname)
-				$destPath = ($ZipFolder.Items() | select -First 1 ).Path
-				$destPath = Join-Path $CurrentPath $destPath
-				if(Test-Path $destPath){ rm $destPath -Recurse }
 				$Location.CopyHere($ZipFolder.Items())
-				return $destPath
 			}
+		}
+		
+		function InstallService{
+			param(
+				[string]$asm,
+				[string]$name,
+				[string]$user = $null
+			)
+			
+			$env = $vars["environment"]
+			$asm = (Join-Path $deploy_dir_current $asm)
+			
+			[void](StopService $name)
+			
+			$util = $vars["install_util"]
+			Print "$util /servicename=$name /environment=$env /LogToConsole=true $asm"
+			
+			& $util "/LogToConsole=true","/environment=$env", "/servicename=$name", $asm
+			
+			# set service user
+			if($user -ne $null){
+				$cred = $host.ui.PromptForCredential("Snap Sync", "Please enter the user name and password that the snap sync service will run under.", $user, "UserName")
+				# this works too!
+				#$cred = Get-Credential $u 
+				#$n = $vars["service_name"]
+				$s = gwmi win32_service -filter "name='$name'"
+				$s.Change($null, $null, $null, $null, $null, $null, $cred.UserName, $cred.GetNetworkCredential().Password, $null, $null, $null)
+			}
+			
+			# Start up the service
+			StartService $name
+		}
+		
+		function UnInstallService{
+			param(
+				[string]$asm,
+				[string]$name
+			)
+			
+			$asm = (Join-Path $deploy_dir_current $asm)
+
+			if(StopService $name){
+				$util = $vars["install_util"]
+				Print "$util /u /LogToConsole=true $asm"
+				& $util "/u", "/LogToConsole=true", $asm
+			}
+		}
+		
+		function StartService{
+			param(
+			[Parameter(Mandatory=$true)]
+			[string]$name
+			)
+						
+			$s = Get-Service "$name*"
+			if($s -ne $null){
+				if( $s.Status -ne "Running" ){
+					Print "Starting service '$name'."
+					$s.Start();
+				}
+				else{
+					Print "Service '$name' is already running."
+				}
+			}
+			else{
+				Print "Service '$name' does not exists."
+			}
+		}
+		
+		function Assert{
+			param(
+			[Parameter(Position=0,Mandatory=1)]$conditionToCheck,
+			[Parameter(Position=1,Mandatory=1)]$failureMessage
+			)
+			if (!$conditionToCheck) { throw $failureMessage }
+		}
+		
+		function StopService{
+			param([string]$name)
+			
+			$s = Get-Service "$name*"
+			if($s -ne $null){
+				if( $s.Status -eq "Running" ){
+					Print "Stopping service '$name'."
+					$s.Stop();
+				}
+				else{
+					Print "Service '$name' is not running."
+				}
+				return $true
+			}
+			else{
+				Print "Service '$name' does not exists."
+			}
+			return $false
 		}
 		
 		function Get-WebFile {
@@ -264,6 +440,9 @@ function SetupRemoteFunctions
 					$writer.Flush()
 					$writer.Close()
 				}
+				
+				
+				
 				if($Passthru){
 					$output
 				}
@@ -274,7 +453,7 @@ function SetupRemoteFunctions
 			}
 		}
 		
-	} -ArgumentList $deploy_to, $scm_command, $repository, $deploy_via, $http_source
+	} -ArgumentList $script:vars, $roles
 }
 
 # todo: it would be nice if we could do something like this
@@ -282,5 +461,3 @@ function SetupRemoteFunctions
 #	task SubTask{
 #	}
 #}
-
-
