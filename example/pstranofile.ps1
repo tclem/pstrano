@@ -9,7 +9,7 @@ include 'config\deploy.ps1'
 $vars["install_util"] = '\Windows\Microsoft.NET\Framework\v2.0.50727\InstallUtil.exe'
 $vars["scm"] = 'git'
 $vars["scm_command"] = '\Program Files\Git\bin\git'
-$user = $null
+$vars["deployment_tools_url"] = 'http://file.bluedotsolutions.com/public/Deployment_tools (1).zip'
 
 setup {
 
@@ -18,21 +18,44 @@ setup {
 	Write-Host ("Connecting to {0} host(s): " -f $roles.web.count) -NoNewline
 	$roles.web | %{ "$_, " | Write-Host -NoNewline  }
 	Write-Host
-	if($user -eq $null){
-		$sessions = New-PSSession $roles.web
+	
+	if ($vars["user"] -eq $null){
+		$vars["user"] = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
+	}
+	$vars["user"] = $host.ui.PromptForCredential("Deployment User", "Enter password for deployment user", $vars["user"],"")
+	Write-Host ("Deployment Credentials set to {0}" -f $vars["user"].Username) 
+		
+	if ($vars["service_user"] -ne $null){
+		$vars["service_user"] = $host.ui.PromptForCredential("Service User", "Enter password for service user", $vars["service_user"],"")	
 	}
 	else{
-		$sessions = New-PSSession $roles.web -Credential $user
+		$vars["service_user"] = $vars["user"]
+	}	
+	Write-Host ("Service Credentials set to {0}" -f $vars["service_user"].Username) 
+	
+	if ($vars["download_user"] -ne $null){
+		$vars["download_user"] = $host.ui.PromptForCredential("Download User", "Enter password for package download user", $vars["download_user"],"")		
 	}
-	SetupRemoteFunctions
+	else{
+		$vars["download_user"] = $vars["user"]
+	}	
+	Write-Host ("Download Credentials set to {0}" -f $vars["download_user"].Username) 		
+	Write-Host	
+	
+	$sessions = New-PSSession $roles.web -Credential $vars["user"]
+	$dbSession = New-PSSession $roles.db[0] -Credential $vars["user"]
+
+	SetupRemoteFunctions $sessions
+	SetupRemoteFunctions $dbSession
 }
 
 teardown {
 	$sessions | Remove-PSSession
+	$dbSession | Remove-PSSession
 }
 
 task Setup {
-	Run {
+	RunBoth {
 		CheckCreatePath $deploy_dir
 		CheckCreatePath ( $deploy_dir_releases )
 		CheckCreatePath ( $deploy_dir_shared )
@@ -41,7 +64,7 @@ task Setup {
 		cd $deploy_dir_shared
 		if(!(Test-Path 'tools.zip')){
 			WriteHostName "Downloading tools to "
-			(Get-WebFile "http://file.bluedotsolutions.com/public/Deployment_tools (1).zip" 'tools.zip') | Write-Host -ForegroundColor DarkGray
+			(Get-WebFile2 $vars["deployment_tools_url"] 'tools.zip') | Write-Host -ForegroundColor DarkGray
 			
 			WriteHostName 'Extracted package to '
 			(Unzip 'tools.zip' 'tools') | Write-Host -ForegroundColor DarkGray
@@ -79,22 +102,24 @@ task DeployViaRemoteCache {
 } -description "Deploys your project via remote cache" -precondition { return ($vars["deploy_via"] -eq 'remote_cache')}
 
 task DeployViaHttp {
+
 	Invoke-Command $sessions {
 		cd $deploy_dir_shared
 		
 		WriteHostName "Downloading from $http_download_url to "
-		(Get-WebFile $http_download_url 'package.zip') | Write-Host -ForegroundColor DarkGray
+		(Get-WebFile2 $http_download_url 'package.zip') | Write-Host -ForegroundColor DarkGray
 #		$f = (Get-WebFile $http_download_url)
 #		Write-Host "$filename" -ForegroundColor DarkGray
 		
 		WriteHostName 'Extracted package to '
-		($cached_copy = UnZip 'package.zip') | Write-Host -ForegroundColor DarkGray
+		($cached_copy = UnZip 'package.zip' 'package') | Write-Host -ForegroundColor DarkGray
 #		($cached_copy = UnZip $f) | Write-Host -ForegroundColor DarkGray
 		
 		# bits doesn't work over pssession :(
 #		Import-Module BitsTransfer
 #		Start-BitsTransfer $bits_package (Join-Path $deploy_dir 'package.zip')
 	}
+	
 } -description "Deploys your project via Http" -precondition { return ($vars["deploy_via"] -eq 'http')}
 
 task UpdateRelease {
@@ -167,6 +192,22 @@ function Run
 	Invoke-Command $sessions $script
 }
 
+function RunBoth
+{
+	param([scriptblock]$script)
+
+	Invoke-Command $sessions $script
+	if ($roles.web[0] -ne $roles.db[0]){
+		Invoke-Command $dbSession $script
+	}
+}
+
+function RunDb
+{
+	param([scriptblock]$script)
+	Invoke-Command $dbSession $script
+}
+
 # Private Functions
 function CheckVars
 {
@@ -198,9 +239,12 @@ function CheckVars
 		throw "Failed. You must specify either 'remote_cache' or 'http' as your deploy_via strategy"
 	}
 }
+
 function SetupRemoteFunctions
 {
-	Invoke-Command $sessions {
+	param($sessions_p)
+	
+	Invoke-Command $sessions_p {
 		param($vars_p, $roles_p)
 		
 		$vars = $vars_p
@@ -296,14 +340,14 @@ function SetupRemoteFunctions
 			& $util "/LogToConsole=true","/environment=$env", "/servicename=$name", $asm
 			
 			# set service user
-			if($user -ne $null){
-				$cred = $host.ui.PromptForCredential("Snap Sync", "Please enter the user name and password that the snap sync service will run under.", $user, "UserName")
+			#if($user -ne $null){
+				#$cred = $host.ui.PromptForCredential("Snap Sync", "Please enter the user name and password that the snap sync service will run under.", $user, "UserName")
 				# this works too!
 				#$cred = Get-Credential $u 
 				#$n = $vars["service_name"]
 				$s = gwmi win32_service -filter "name='$name'"
-				$s.Change($null, $null, $null, $null, $null, $null, $cred.UserName, $cred.GetNetworkCredential().Password, $null, $null, $null)
-			}
+				$s.Change($null, $null, $null, $null, $null, $null, $vars["service_user"].UserName, $vars["service_user"].GetNetworkCredential().Password, $null, $null, $null)
+			#}
 			
 			# Start up the service
 			StartService $name
@@ -371,6 +415,24 @@ function SetupRemoteFunctions
 				Print "Service '$name' does not exists."
 			}
 			return $false
+		}
+		
+		function Get-WebFile2 {
+			param( 
+				$url = (Read-Host "The URL to download"),
+				$fileName = $null
+			)
+			if($fileName -and !(Split-Path $fileName)) {
+				$fileName = Join-Path (Get-Location -PSProvider "FileSystem") $fileName
+			} 
+			
+			$client = New-Object Net.WebClient
+			$client.Credentials = $vars["download_user"]
+			$client.DownloadFile($url, $fileName)
+			
+			if($fileName){
+				ls $fileName
+			}
 		}
 		
 		function Get-WebFile {
