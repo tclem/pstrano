@@ -189,6 +189,10 @@ function Write-TaskTimeSummary
 	[Array]::Reverse($list)
 	$list += "" | Select-Object @{Name="Task";Expression={"Total:"}}, @{Name="Duration";Expression={$stopwatch.Elapsed}}
 	$list | Format-Table -Auto | Out-String -Stream | ? {$_}  # using "Out-String -Stream" to filter out the blank line that Format-Table prepends 
+	
+	"-"*70
+	"Finished deployment to $script:defaultEnvironment"
+	"-"*70
 }
 
 function Load_DefaultEnvironment

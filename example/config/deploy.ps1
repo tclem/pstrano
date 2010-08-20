@@ -1,24 +1,27 @@
 # you can add more environments by creating their files in the deploy directory
 # and including them here.
-environment 'production' -default	# this tells pstrano to look for a file here: '.\deploy\production.ps1'
+environment 'production'	# this tells pstrano to look for a file here: '.\deploy\production.ps1'
 environment 'test' 
+environment 'dev' -default
 
-set application 'sample_application'
-set deploy_to "\Inetpub\wwwroot\$application"
+$vars["deploy_to"] = "\Inetpub\wwwroot\sample_application"
+$vars["deploy_via"] = 'http'
+$vars["http_source"] = "http://github.com/tclem/pstrano/zipball/master"
 
-# First deployment strategy is using git and a remote_cache of the repository -> this is the fastest
-#set deploy_via 'remote_cache'
-set repository 'git://github.com/tclem/pstrano.git'
+# # First deployment strategy is using git and a remote_cache of the repository -> this is the fastest
+# #set deploy_via 'remote_cache'
+# set repository 'git://github.com/tclem/pstrano.git'
 
-# Second deployment strategy is using http file download (expects a zip file) -> slower, but no dependencies
-set deploy_via 'http'
-set http_source 'http://github.com/tclem/pstrano/zipball/master'
+# # Second deployment strategy is using http file download (expects a zip file) -> slower, but no dependencies
+# set deploy_via 'http'
+# set http_source 'http://github.com/tclem/pstrano/zipball/master'
 
 task SomethingCool{
-
 	Run {
-	WriteHostName
-	"This is my task running"}
+		WriteHostName "This is my task running on a remote server"
+		Write-Host
+		Write-EnvironmentConfiguration "app.config" $vars["environment"]
+	}
 
 } -description "Nice task"
 

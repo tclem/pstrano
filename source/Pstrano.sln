@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pstrano.Automation", "Pstrano.Automation\Pstrano.Automation.csproj", "{22C00B2E-4511-4A14-8045-57BC67F088D3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pstrano.Automation.Tests", "Pstrano.Automation.Tests\Pstrano.Automation.Tests.csproj", "{186DA5E2-7758-49AB-BCD8-027CBB8CC33E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{22C00B2E-4511-4A14-8045-57BC67F088D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{22C00B2E-4511-4A14-8045-57BC67F088D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{22C00B2E-4511-4A14-8045-57BC67F088D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{22C00B2E-4511-4A14-8045-57BC67F088D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{186DA5E2-7758-49AB-BCD8-027CBB8CC33E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{186DA5E2-7758-49AB-BCD8-027CBB8CC33E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{186DA5E2-7758-49AB-BCD8-027CBB8CC33E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{186DA5E2-7758-49AB-BCD8-027CBB8CC33E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -1,11 +1,12 @@
+pstrano
+===================
+
 pstrano is a capistrano like deployment and automation tool specifically for Windows and Powershell. I have borrowed heavily from psake (http://github.com/JamesKovacs/psake) for the initial structure of the module. The task system has been changed to support before and after syntax instead of -depends.
 
 This tool is very much considered Alpha status.
 
-No real functionality yet, just the basic framework for creating and executing tasks
-
-
 Setup Instructions
+--------------------
  In order to use this file and do a deployment you need to:
 	1. Make sure you have power shell installed on your development pc and all remote servers
 	2. Make sure winrm is configured on each remote server (winrm quickconfig)
@@ -23,15 +24,16 @@ Setup Instructions
 		pstrano setup
 		pstrano deploy
 
+		
  First time setup notes:
-
+--------------------
  1. Right now, this command needs to be run manually to let snap sync listen on http :8080
  		"netsh http add urlacl url=http://+:8080/ user=BDS\tclem"
  		Ref: http://msdn.microsoft.com/en-us/library/ms733768.aspx
 
 
  Setting up TrustedHosts for cross domain deployment: 
- 
+ --------------------
  1. The TrustedHosts config setting needs to be set in order to enable WinRM communication between the client and 
     and the server. This setting needs to be set on both the client and the server. More information 
     regarding this setting can be found here: http://msdn.microsoft.com/en-us/library/aa384372(VS.85).aspx

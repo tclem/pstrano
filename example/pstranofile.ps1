@@ -9,7 +9,8 @@ include 'config\deploy.ps1'
 $vars["install_util"] = '\Windows\Microsoft.NET\Framework\v2.0.50727\InstallUtil.exe'
 $vars["scm"] = 'git'
 $vars["scm_command"] = '\Program Files\Git\bin\git'
-$vars["deployment_tools_url"] = 'http://file.bluedotsolutions.com/public/Deployment_tools (1).zip'
+$vars["deployment_tools_url"] = "http://file.bluedotsolutions.com/public/Deployment_tools (1).zip"
+$vars["remote_pstrano_url"] = "http://github.com/downloads/tclem/pstrano/remote_pstrano.zip"
 
 setup {
 
@@ -20,10 +21,17 @@ setup {
 	Write-Host
 	
 	if ($vars["user"] -eq $null){
-		$vars["user"] = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
+		Write-Host ("Deployment Credentials set to {0}" -f ([Security.Principal.WindowsIdentity]::GetCurrent()).Name) 
 	}
-	$vars["user"] = $host.ui.PromptForCredential("Deployment User", "Enter password for deployment user", $vars["user"],"")
-	Write-Host ("Deployment Credentials set to {0}" -f $vars["user"].Username) 
+	else{
+		$vars["user"] = $host.ui.PromptForCredential("Deployment User", "Enter password for deployment user", $vars["user"],"")
+		Write-Host ("Deployment Credentials set to {0}" -f $vars["user"].Username) 
+	}
+	# if ($vars["user"] -eq $null){
+		# $vars["user"] = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
+	# }
+	# $vars["user"] = $host.ui.PromptForCredential("Deployment User", "Enter password for deployment user", $vars["user"],"")
+	# Write-Host ("Deployment Credentials set to {0}" -f $vars["user"].Username) 
 		
 	if ($vars["service_user"] -ne $null){
 		$vars["service_user"] = $host.ui.PromptForCredential("Service User", "Enter password for service user", $vars["service_user"],"")	
@@ -42,16 +50,23 @@ setup {
 	Write-Host ("Download Credentials set to {0}" -f $vars["download_user"].Username) 		
 	Write-Host	
 	
-	$sessions = New-PSSession $roles.web -Credential $vars["user"]
-	$dbSession = New-PSSession $roles.db[0] -Credential $vars["user"]
-
+	if ($vars["user"] -eq $null){
+		$sessions = New-PSSession $roles.web
+	}
+	else{
+		$sessions = New-PSSession $roles.web -Credential $vars["user"]
+	}
 	SetupRemoteFunctions $sessions
-	SetupRemoteFunctions $dbSession
+
+	# this setups db server remote session
+	#$dbSession = New-PSSession $roles.db[0] -Credential $vars["user"]
+	#SetupRemoteFunctions $dbSession
 }
 
 teardown {
 	$sessions | Remove-PSSession
-	$dbSession | Remove-PSSession
+	# this tearsdown db server remote session
+	#$dbSession | Remove-PSSession
 }
 
 task Setup {
@@ -64,12 +79,24 @@ task Setup {
 		cd $deploy_dir_shared
 		if(!(Test-Path 'tools.zip')){
 			WriteHostName "Downloading tools to "
+			# (Get-WebFile2 "http://file.bluedotsolutions.com/public/Deployment_tools (1).zip" 'tools.zip') | Write-Host -ForegroundColor DarkGray
 			(Get-WebFile2 $vars["deployment_tools_url"] 'tools.zip') | Write-Host -ForegroundColor DarkGray
 			
 			WriteHostName 'Extracted package to '
 			(Unzip 'tools.zip' 'tools') | Write-Host -ForegroundColor DarkGray
 		}
 		CheckFile ( Join-Path $deploy_dir_shared '\tools\junction.exe' )
+		Write-Host "!Make sure you run junction once manually (double click on the .exe) and accept the license agreement!" -ForegroundColor Green
+		
+		if(!(Test-Path 'remote_pstrano.zip')){
+			WriteHostName "Downloading remote pstrano module to "
+			
+			(Get-WebFile2 $vars["remote_pstrano_url"] 'remote_pstrano.zip') | Write-Host -ForegroundColor DarkGray
+			
+			WriteHostName 'Extracted package to '
+			(Unzip 'remote_pstrano.zip' 'remote_pstrano') | Write-Host -ForegroundColor DarkGray
+		}
+		
 	}
 } -description "Sets up each of the web server roles" 
 
@@ -257,6 +284,15 @@ function SetupRemoteFunctions
 		$deploy_strategy = $vars["deploy_via"]
 		$deploy_dir = $vars["deploy_to"]
 
+    	if(!(Test-Path $deploy_dir)){
+            [void](md $deploy_dir -ea 0)
+            if(!(Test-Path $deploy_dir)){
+                if ($deploy_dir.Contains(":")){
+                    $deploy_dir = $deploy_dir.Substring(2)
+                }
+            }    
+		}
+
 		$deploy_dir_current = (Join-Path $deploy_dir '\current')
 		$deploy_dir_shared = (Join-Path $deploy_dir '\shared')
 		$deploy_dir_releases = (Join-Path $deploy_dir '\releases')
@@ -265,261 +301,257 @@ function SetupRemoteFunctions
 		
 		$vars.Keys | %{ "$_ : " + $vars["$_"]  } | Write-Host -ForegroundColor DarkGray
 	
-		function CheckCreatePath {
-			param($path)
+		Import-Module (Join-Path $deploy_dir_shared 'remote_pstrano\PstranoRemote.psd1')
+	
+		# function CheckCreatePath {
+			# param($path)
 			
-			if(!(Test-Path $path)){
-				Print ("Creating {0}" -f $path) Magenta
-				[void](md $path)
-			}
-			else{
-				Print ("{0} exists" -f $path) -ForegroundColor Green
-			}
-		}
+			# if(!(Test-Path $path)){
+				# Print ("Creating {0}" -f $path) Magenta
+				# [void](md $path)
+			# }
+			# else{
+				# Print ("{0} exists" -f $path) -ForegroundColor Green
+			# }
+		# }
 		
-		function CheckFile{
-			param($path)
-			if(!(Test-Path $path)){
-				Print ("$path does not exist! You must manually put this file on the remote filesystem for pstrano to work.") -ForegroundColor Red
-			}
-			else{
-				Print ("{0} exists" -f $path) Green
-			}
-		}
+		# function CheckFile{
+			# param($path)
+			# if(!(Test-Path $path)){
+				# Print ("$path does not exist! You must manually put this file on the remote filesystem for pstrano to work.") -ForegroundColor Red
+			# }
+			# else{
+				# Print ("{0} exists" -f $path) Green
+			# }
+		# }
 		
-		function Print{
-			param(
-				[string]$text, 
-				[System.ConsoleColor]$ForegroundColor
-			)
-			Write-Host "[$host_name]# " -ForegroundColor DarkGray -NoNewline
-			if($ForegroundColor -eq $null){
-				Write-Host $text -ForegroundColor DarkGray 
-			}
-			else{
-				Write-Host $text -ForegroundColor $ForegroundColor 
-			}
-		}
+		# function Print{
+			# param(
+				# [string]$text, 
+				# [System.ConsoleColor]$ForegroundColor
+			# )
+			# Write-Host "[$host_name]# " -ForegroundColor DarkGray -NoNewline
+			# if($ForegroundColor -eq $null){
+				# Write-Host $text -ForegroundColor DarkGray 
+			# }
+			# else{
+				# Write-Host $text -ForegroundColor $ForegroundColor 
+			# }
+		# }
 		
-		function WriteHostName {
-			param([string]$text)
-			Write-Host ("[{0}]# $text" -f (hostname)) -ForegroundColor DarkGray -NoNewline
-		}
+		# function WriteHostName {
+			# param([string]$text)
+			# Write-Host ("[{0}]# $text" -f (hostname)) -ForegroundColor DarkGray -NoNewline
+		# }
 		
-		function UnZip{
-			param([string]$file, [string]$name = 'UnPack')
+		# function UnZip{
+			# param([string]$file, [string]$name = 'UnPack')
 			
-			$shell=new-object -com shell.application
-			$CurrentLocation= get-location 
-			$CurrentLocation = Join-Path $CurrentLocation $name
-			if(Test-Path $CurrentLocation){ rm $CurrentLocation -Force -Recurse }
-			mkdir $CurrentLocation -Force
-			$Location=$shell.namespace($CurrentLocation)
-			$ZipFiles = get-childitem $file
-			foreach ($ZipFile in $ZipFiles){
-				$ZipFolder = $shell.namespace($ZipFile.fullname)
-				$Location.CopyHere($ZipFolder.Items())
-			}
-		}
+			# $shell=new-object -com shell.application
+			# $CurrentLocation= get-location 
+			# $CurrentLocation = Join-Path $CurrentLocation $name
+			# if(Test-Path $CurrentLocation){ rm $CurrentLocation -Force -Recurse }
+			# mkdir $CurrentLocation -Force
+			# $Location=$shell.namespace($CurrentLocation)
+			# $ZipFiles = get-childitem $file
+			# foreach ($ZipFile in $ZipFiles){
+				# $ZipFolder = $shell.namespace($ZipFile.fullname)
+				# $Location.CopyHere($ZipFolder.Items())
+			# }
+		# }
 		
-		function InstallService{
-			param(
-				[string]$asm,
-				[string]$name,
-				[string]$user = $null
-			)
+		# function InstallService{
+			# param(
+				# [string]$asm,
+				# [string]$name,
+				# [string]$user = $null
+			# )
 			
-			$env = $vars["environment"]
-			$asm = (Join-Path $deploy_dir_current $asm)
+			# $env = $vars["environment"]
+			# $asm = (Join-Path $deploy_dir_current $asm)
 			
-			[void](StopService $name)
+			# [void](StopService $name)
 			
-			$util = $vars["install_util"]
-			Print "$util /servicename=$name /environment=$env /LogToConsole=true $asm"
+			# $util = $vars["install_util"]
+			# Print "$util /servicename=$name /environment=$env /LogToConsole=true $asm"
 			
-			& $util "/LogToConsole=true","/environment=$env", "/servicename=$name", $asm
+			# & $util "/LogToConsole=true","/environment=$env", "/servicename=$name", $asm
 			
-			# set service user
-			#if($user -ne $null){
-				#$cred = $host.ui.PromptForCredential("Snap Sync", "Please enter the user name and password that the snap sync service will run under.", $user, "UserName")
-				# this works too!
-				#$cred = Get-Credential $u 
-				#$n = $vars["service_name"]
-				$s = gwmi win32_service -filter "name='$name'"
-				$s.Change($null, $null, $null, $null, $null, $null, $vars["service_user"].UserName, $vars["service_user"].GetNetworkCredential().Password, $null, $null, $null)
-			#}
+			# # set service user
+			# #if($user -ne $null){
+				# #$cred = $host.ui.PromptForCredential("Snap Sync", "Please enter the user name and password that the snap sync service will run under.", $user, "UserName")
+				# # this works too!
+				# #$cred = Get-Credential $u 
+				# #$n = $vars["service_name"]
+				# $s = gwmi win32_service -filter "name='$name'"
+				# $s.Change($null, $null, $null, $null, $null, $null, $vars["service_user"].UserName, $vars["service_user"].GetNetworkCredential().Password, $null, $null, $null)
+			# #}
 			
-			# Start up the service
-			StartService $name
-		}
+			# # Start up the service
+			# StartService $name
+		# }
 		
-		function UnInstallService{
-			param(
-				[string]$asm,
-				[string]$name
-			)
+		# function UnInstallService{
+			# param(
+				# [string]$asm,
+				# [string]$name
+			# )
 			
-			$asm = (Join-Path $deploy_dir_current $asm)
+			# $asm = (Join-Path $deploy_dir_current $asm)
 
-			if(StopService $name){
-				$util = $vars["install_util"]
-				Print "$util /u /LogToConsole=true $asm"
-				& $util "/u", "/LogToConsole=true", $asm
-			}
-		}
+			# if(StopService $name){
+				# $util = $vars["install_util"]
+				# Print "$util /u /LogToConsole=true $asm"
+				# & $util "/u", "/LogToConsole=true", $asm
+			# }
+		# }
 		
-		function StartService{
-			param(
-			[Parameter(Mandatory=$true)]
-			[string]$name
-			)
+		# function StartService{
+			# param(
+			# [Parameter(Mandatory=$true)]
+			# [string]$name
+			# )
 						
-			$s = Get-Service "$name*"
-			if($s -ne $null){
-				if( $s.Status -ne "Running" ){
-					Print "Starting service '$name'."
-					$s.Start();
-				}
-				else{
-					Print "Service '$name' is already running."
-				}
-			}
-			else{
-				Print "Service '$name' does not exists."
-			}
-		}
+			# $s = Get-Service "$name*"
+			# if($s -ne $null){
+				# if( $s.Status -ne "Running" ){
+					# Print "Starting service '$name'."
+					# $s.Start();
+				# }
+				# else{
+					# Print "Service '$name' is already running."
+				# }
+			# }
+			# else{
+				# Print "Service '$name' does not exists."
+			# }
+		# }
 		
-		function Assert{
-			param(
-			[Parameter(Position=0,Mandatory=1)]$conditionToCheck,
-			[Parameter(Position=1,Mandatory=1)]$failureMessage
-			)
-			if (!$conditionToCheck) { throw $failureMessage }
-		}
+		# function Assert{
+			# param(
+			# [Parameter(Position=0,Mandatory=1)]$conditionToCheck,
+			# [Parameter(Position=1,Mandatory=1)]$failureMessage
+			# )
+			# if (!$conditionToCheck) { throw $failureMessage }
+		# }
 		
-		function StopService{
-			param([string]$name)
+		# function StopService{
+			# param([string]$name)
 			
-			$s = Get-Service "$name*"
-			if($s -ne $null){
-				if( $s.Status -eq "Running" ){
-					Print "Stopping service '$name'."
-					$s.Stop();
-				}
-				else{
-					Print "Service '$name' is not running."
-				}
-				return $true
-			}
-			else{
-				Print "Service '$name' does not exists."
-			}
-			return $false
-		}
+			# $s = Get-Service "$name*"
+			# if($s -ne $null){
+				# if( $s.Status -eq "Running" ){
+					# Print "Stopping service '$name'."
+					# $s.Stop();
+				# }
+				# else{
+					# Print "Service '$name' is not running."
+				# }
+				# return $true
+			# }
+			# else{
+				# Print "Service '$name' does not exists."
+			# }
+			# return $false
+		# }
 		
-		function Get-WebFile2 {
-			param( 
-				$url = (Read-Host "The URL to download"),
-				$fileName = $null
-			)
-			if($fileName -and !(Split-Path $fileName)) {
-				$fileName = Join-Path (Get-Location -PSProvider "FileSystem") $fileName
-			} 
+		# function Get-WebFile2 {
+			# param( 
+				# $url = (Read-Host "The URL to download"),
+				# $fileName = $null
+			# )
+			# if($fileName -and !(Split-Path $fileName)) {
+				# $fileName = Join-Path (Get-Location -PSProvider "FileSystem") $fileName
+			# } 
 			
-			$client = New-Object Net.WebClient
-			$client.Credentials = $vars["download_user"]
-			$client.DownloadFile($url, $fileName)
+			# $client = New-Object Net.WebClient
+			# $client.Credentials = $vars["download_user"]
+			# $client.DownloadFile($url, $fileName)
 			
-			if($fileName){
-				ls $fileName
-			}
-		}
+			# if($fileName){
+				# ls $fileName
+			# }
+		# }
 		
-		function Get-WebFile {
-			param( 
-				$url = (Read-Host "The URL to download"),
-				$fileName = $null,
-				[switch]$Passthru,
-				[switch]$quiet
-			)
+		# function Get-WebFile {
+			# param( 
+				# $url = (Read-Host "The URL to download"),
+				# $fileName = $null,
+				# [switch]$Passthru,
+				# [switch]$quiet
+			# )
 			
-			$req = [System.Net.HttpWebRequest]::Create($url);
-			$res = $req.GetResponse();
+			# $req = [System.Net.HttpWebRequest]::Create($url);
+			# $res = $req.GetResponse();
 			
-			if($fileName -and !(Split-Path $fileName)) {
-				$fileName = Join-Path (Get-Location -PSProvider "FileSystem") $fileName
-			} 
-			elseif((!$Passthru -and ($fileName -eq $null)) -or (($fileName -ne $null) -and (Test-Path -PathType "Container" $fileName)))
-			{
-				[string]$fileName = ([regex]'(?i)filename=(.*)$').Match( $res.Headers["Content-Disposition"] ).Groups[1].Value
-				$fileName = $fileName.trim("\/""'")
-				if(!$fileName) {
-					$fileName = $res.ResponseUri.Segments[-1]
-					$fileName = $fileName.trim("\/")
-					if(!$fileName) { 
-						$fileName = Read-Host "Please provide a file name"
-					}
-					$fileName = $fileName.trim("\/")
-					if(!([IO.FileInfo]$fileName).Extension) {
-						$fileName = $fileName + "." + $res.ContentType.Split(";")[0].Split("/")[1]
-					}
-				}
-				$fileName = Join-Path (Get-Location -PSProvider "FileSystem") $fileName
-			}
-			if($Passthru) {
-				$encoding = [System.Text.Encoding]::GetEncoding( $res.CharacterSet )
-				[string]$output = ""
-			}
+			# if($fileName -and !(Split-Path $fileName)) {
+				# $fileName = Join-Path (Get-Location -PSProvider "FileSystem") $fileName
+			# } 
+			# elseif((!$Passthru -and ($fileName -eq $null)) -or (($fileName -ne $null) -and (Test-Path -PathType "Container" $fileName)))
+			# {
+				# [string]$fileName = ([regex]'(?i)filename=(.*)$').Match( $res.Headers["Content-Disposition"] ).Groups[1].Value
+				# $fileName = $fileName.trim("\/""'")
+				# if(!$fileName) {
+					# $fileName = $res.ResponseUri.Segments[-1]
+					# $fileName = $fileName.trim("\/")
+					# if(!$fileName) { 
+						# $fileName = Read-Host "Please provide a file name"
+					# }
+					# $fileName = $fileName.trim("\/")
+					# if(!([IO.FileInfo]$fileName).Extension) {
+						# $fileName = $fileName + "." + $res.ContentType.Split(";")[0].Split("/")[1]
+					# }
+				# }
+				# $fileName = Join-Path (Get-Location -PSProvider "FileSystem") $fileName
+			# }
+			# if($Passthru) {
+				# $encoding = [System.Text.Encoding]::GetEncoding( $res.CharacterSet )
+				# [string]$output = ""
+			# }
 			
-			if($res.StatusCode -eq 200 -or $res.StatusCode -eq 'OpeningData') {
-				[int]$goal = $res.ContentLength
-				$reader = $res.GetResponseStream()
-				if($fileName) {
-					$writer = new-object System.IO.FileStream $fileName, "Create"
-				}
-				[byte[]]$buffer = new-object byte[] 4096
-				[int]$total = [int]$count = 0
-				do
-				{
-					$count = $reader.Read($buffer, 0, $buffer.Length);
-					if($fileName) {
-						$writer.Write($buffer, 0, $count);
-					} 
-					if($Passthru){
-						$output += $encoding.GetString($buffer,0,$count)
-					} elseif(!$quiet) {
-						$total += $count
-						if($goal -gt 0) {
-						Write-Progress "Downloading $url" "Saving $total of $goal" -id 0 -percentComplete (($total/$goal)*100)
-						} else {
-						Write-Progress "Downloading $url" "Saving $total bytes..." -id 0
-						}
-					}
-				} while ($count -gt 0)
+			# if($res.StatusCode -eq 200 -or $res.StatusCode -eq 'OpeningData') {
+				# [int]$goal = $res.ContentLength
+				# $reader = $res.GetResponseStream()
+				# if($fileName) {
+					# $writer = new-object System.IO.FileStream $fileName, "Create"
+				# }
+				# [byte[]]$buffer = new-object byte[] 4096
+				# [int]$total = [int]$count = 0
+				# do
+				# {
+					# $count = $reader.Read($buffer, 0, $buffer.Length);
+					# if($fileName) {
+						# $writer.Write($buffer, 0, $count);
+					# } 
+					# if($Passthru){
+						# $output += $encoding.GetString($buffer,0,$count)
+					# } elseif(!$quiet) {
+						# $total += $count
+						# if($goal -gt 0) {
+						# Write-Progress "Downloading $url" "Saving $total of $goal" -id 0 -percentComplete (($total/$goal)*100)
+						# } else {
+						# Write-Progress "Downloading $url" "Saving $total bytes..." -id 0
+						# }
+					# }
+				# } while ($count -gt 0)
 				
-				$reader.Close()
-				if($fileName) {
-					$writer.Flush()
-					$writer.Close()
-				}
+				# $reader.Close()
+				# if($fileName) {
+					# $writer.Flush()
+					# $writer.Close()
+				# }
 				
 				
 				
-				if($Passthru){
-					$output
-				}
-			}
-			$res.Close(); 
-			if($fileName) {
-				ls $fileName
-			}
-		}
+				# if($Passthru){
+					# $output
+				# }
+			# }
+			# $res.Close(); 
+			# if($fileName) {
+				# ls $fileName
+			# }
+		# }
 		
 	} -ArgumentList $script:vars, $roles
 }
-
-# todo: it would be nice if we could do something like this
-#namespace Deploy {
-#	task SubTask{
-#	}
-#}
