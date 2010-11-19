@@ -20,6 +20,15 @@
 #-- Public Module Variables -- The pstrano hashtable variable is initialized in the invoke-pstrano function
 $script:pstrano = @{}
 Export-ModuleMember -Variable "pstrano","roles"
+#-- Helper functions
+function exec([scriptblock]$command, [string]$errorMsg) {    
+    & $command 
+    if ($lastExitCode -ne 0) {
+        throw $errorMsg
+    }
+}
+$script:v4_net_version = (ls "$env:windir\Microsoft.NET\Framework\v4.0*").Name
+$script:msbuild = "C:\Windows\Microsoft.NET\Framework\$v4_net_version\MSBuild.exe"
 
 #-- Private Module Functions
 function ExecuteTask 
